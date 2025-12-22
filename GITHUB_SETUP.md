@@ -96,3 +96,4 @@ jobs:
 3. Consider adding screenshots to the README
 4. Set up branch protection rules if working with others
 5. Enable GitHub Issues and Discussions if you want community feedback
+

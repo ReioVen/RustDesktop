@@ -113,3 +113,4 @@
 **Note for CV**: This project demonstrates full-stack desktop application development skills, modern software architecture, real-time communication, and professional UI/UX design. It showcases the ability to work with complex protocols, integrate multiple technologies, and build commercial-grade software following industry best practices.
 
 
+

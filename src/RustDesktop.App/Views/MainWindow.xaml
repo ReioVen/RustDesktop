@@ -1,1 +1,909 @@
+<Window x:Class="RustDesktop.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:converters="clr-namespace:RustDesktop.App.Converters"
+        xmlns:controls="clr-namespace:RustDesktop.App.Controls"
+        mc:Ignorable="d"
+        Title="Rust Desktop - Rust+ Desktop Client" 
+        Height="900" Width="1600"
+        MinHeight="600" MinWidth="1000"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="{DynamicResource MaterialDesignPaper}">
+    
+    <Window.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:IconPathConverter x:Key="IconPathConverter"/>
+        <converters:GridCoordinateConverter x:Key="GridCoordinateConverter"/>
+        
+        <!-- Smooth Scrolling Style for ListBox -->
+        <Style TargetType="ScrollViewer" x:Key="SmoothScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="IsDeferredScrollingEnabled" Value="False"/>
+            <Setter Property="PanningMode" Value="VerticalOnly"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Modern Header -->
+        <materialDesign:ColorZone Grid.Row="0" 
+                                  Padding="20,16"
+                                  materialDesign:ShadowAssist.ShadowDepth="Depth4"
+                                  VerticalAlignment="Stretch"
+                                  Mode="PrimaryDark">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="Map" 
+                                             VerticalAlignment="Center" 
+                                             Margin="0,0,16,0"
+                                             Foreground="White"
+                                             Width="28"
+                                             Height="28"/>
+                    <TextBlock Text="Rust Desktop" 
+                               FontSize="26" 
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="White"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               VerticalAlignment="Center"
+                               Margin="0,0,16,0"
+                               Foreground="White"
+                               FontSize="14"/>
+                    <materialDesign:PackIcon VerticalAlignment="Center"
+                                             Margin="0,0,16,0">
+                        <materialDesign:PackIcon.Style>
+                            <Style TargetType="materialDesign:PackIcon">
+                                <Setter Property="Kind" Value="CloseCircle"/>
+                                <Setter Property="Foreground" Value="Red"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                                        <Setter Property="Kind" Value="CheckCircle"/>
+                                        <Setter Property="Foreground" Value="Lime"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                        <Setter Property="Kind" Value="AlertCircle"/>
+                                        <Setter Property="Foreground" Value="Yellow"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </materialDesign:PackIcon.Style>
+                    </materialDesign:PackIcon>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="White"
+                               FontSize="12"
+                               Margin="0,0,16,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value=""/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                                        <Setter Property="Text" Value="Authenticated"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                        <Setter Property="Text" Value="Connected"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </materialDesign:ColorZone>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="350"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="280"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="500"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Sidebar - Connection & Controls -->
+            <materialDesign:Card Grid.Column="0" 
+                                 Margin="0,0,12,0"
+                                 Padding="20"
+                                 materialDesign:ShadowAssist.ShadowDepth="Depth3"
+                                 materialDesign:ElevationAssist.Elevation="Dp2">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                    <TextBlock Text="Server Connection" 
+                               FontSize="20" 
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,20"/>
+
+                    <!-- Server Info Display -->
+                    <Border Margin="0,0,0,20" 
+                            Padding="16"
+                            Visibility="{Binding CurrentServer, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"
+                            Background="{DynamicResource MaterialDesignCardBackground}"
+                            materialDesign:ShadowAssist.ShadowDepth="Depth2"
+                            CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock Text="Connected Server" 
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                       Margin="0,0,0,8"/>
+                            
+                            <!-- Server Name (Primary) -->
+                            <TextBlock FontSize="16"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                       Margin="0,0,0,4"
+                                       TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding CurrentServer.Name}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentServer.Name, Converter={StaticResource NullToVisibilityConverter}}" Value="False">
+                                                <Setter Property="Text" Value="{Binding CurrentServer.IpAddress}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            
+                            <!-- IP and Port (Secondary Info) -->
+                            <TextBlock Foreground="{DynamicResource MaterialDesignBody}"
+                                       FontSize="11"
+                                       Opacity="0.85"
+                                       Margin="0,4,0,0">
+                                <Run Text="{Binding CurrentServer.IpAddress}"/>
+                                <Run Text=":"/>
+                                <Run Text="{Binding CurrentServer.Port}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Step 1: Steam Authentication Button -->
+                    <TextBlock Text="Step 1: Connect Steam" 
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,8"/>
+                    <Button Command="{Binding AuthenticateSteamCommand}"
+                            Margin="0,0,0,16"
+                            Padding="16,8">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+                                <Setter Property="Content" Value="Connect Steam"/>
+                                <Setter Property="IsEnabled" Value="{Binding IsSteamConnected, Converter={StaticResource InverseBooleanConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                        <Setter Property="Content" Value="Authenticating..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsSteamConnected}" Value="True">
+                                        <Setter Property="Content" Value="✓ Steam Connected"/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Step 2: Pair Server Button -->
+                    <TextBlock Text="Step 2: Pair Server" 
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,8"/>
+                    <Button Command="{Binding PairServerCommand}"
+                            Margin="0,0,0,16"
+                            Padding="16,8">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+                                <Setter Property="Content" Value="Pair Server"/>
+                                <Setter Property="IsEnabled" Value="{Binding IsSteamConnected}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                        <Setter Property="Content" Value="Pairing..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Step 3: Connection Button -->
+                    <TextBlock Text="Step 3: Connect to Rust+" 
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,8"/>
+                    <Button Command="{Binding ConnectCommand}"
+                            Margin="0,0,0,12"
+                            Padding="16,8"
+                            IsDefault="True">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+                                <Setter Property="Content" Value="Connect to Rust+"/>
+                                <Setter Property="IsEnabled" Value="{Binding IsConnected, Converter={StaticResource InverseBooleanConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                        <Setter Property="Content" Value="Connecting..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                        <Setter Property="Content" Value="Connected"/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <Button Content="Disconnect" 
+                            Command="{Binding DisconnectCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            Margin="0,0,0,24"
+                            FontSize="13"
+                            IsEnabled="{Binding IsConnected}"/>
+
+                    <Separator Margin="0,0,0,20" Opacity="0.3"/>
+
+                    <TextBlock Text="Actions" 
+                               FontSize="18" 
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,16"
+                               />
+
+                    <Button Content="Refresh Map" 
+                            Command="{Binding RefreshMapCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            Margin="0,0,0,8"
+                            FontSize="13"
+                            IsEnabled="{Binding IsConnected}"/>
+
+                    <Button Content="Refresh Vending Machines" 
+                            Command="{Binding RefreshVendingMachinesCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            Margin="0,0,0,8"
+                            FontSize="13"
+                            IsEnabled="{Binding IsConnected}"/>
+
+                    <Button Content="Test Raid Alert" 
+                            Command="{Binding TestRaidAlertCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            Margin="0,0,0,8"
+                            FontSize="13"/>
+
+                    <Button Content="Test World Events" 
+                            Command="{Binding TestWorldEventCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            FontSize="13"/>
+
+                    <!-- Info Text -->
+                    <TextBlock Text="Connection info is automatically detected from your Rust game installation." 
+                               FontSize="11"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               TextWrapping="Wrap"
+                               Margin="0,16,0,0"
+                               Opacity="0.8"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </materialDesign:Card>
+
+            <!-- Map Content -->
+            <Border Grid.Column="2" 
+                    Padding="0"
+                    MaxWidth="1000"
+                    HorizontalAlignment="Left"
+                    materialDesign:ShadowAssist.ShadowDepth="Depth3"
+                    CornerRadius="8">
+                <materialDesign:Card Padding="0" Background="Transparent" materialDesign:ShadowAssist.ShadowDepth="Depth0">
+                    <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" 
+                               Text="Map View" 
+                               FontSize="20" 
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="20,16,20,12"
+                               />
+
+                    <Border Grid.Row="1" 
+                            BorderBrush="{DynamicResource MaterialDesignDivider}"
+                            BorderThickness="0,1,0,0"
+                            Background="Transparent"
+                            Padding="0">
+                        <Grid Background="#1E1E1E">
+                            <TextBlock Text="Made by R3io"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="White"
+                                       FontSize="16"
+                                       FontWeight="Bold"
+                                       Visibility="{Binding MapInfo, Converter={StaticResource NullToVisibilityConverter}}"/>
+                            
+                            <!-- Zoomable Map Control (Full Size) -->
+                            <controls:ZoomableMapControl 
+                                ImageData="{Binding MapInfo.ImageData}"
+                                VendingMachines="{Binding VendingMachines}"
+                                TeamMembers="{Binding TeamMembers}"
+                                Visibility="{Binding MapInfo, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
+                        </Grid>
+                    </Border>
+                    </Grid>
+                </materialDesign:Card>
+            </Border>
+
+            <!-- World Events Panel -->
+            <Border Grid.Column="4" 
+                    Margin="12,0,12,0"
+                    Padding="0"
+                    materialDesign:ShadowAssist.ShadowDepth="Depth3"
+                    CornerRadius="8">
+                <materialDesign:Card Padding="20" Background="Transparent" materialDesign:ShadowAssist.ShadowDepth="Depth0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="MapMarker" 
+                                                 VerticalAlignment="Center" 
+                                                 Margin="0,0,10,0"
+                                                 Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                                 Width="24"
+                                                 Height="24"/>
+                        <TextBlock Text="World Events" 
+                                   FontSize="20" 
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   />
+                    </StackPanel>
+                    
+                    <ListBox Grid.Row="1"
+                             ItemsSource="{Binding WorldEvents}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="False"
+                             BorderThickness="0"
+                             Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,10"
+                                        Margin="0,0,0,8"
+                                        Background="{DynamicResource MaterialDesignCardBackground}"
+                                        CornerRadius="4"
+                                        materialDesign:ShadowAssist.ShadowDepth="Depth1">
+                                    <StackPanel>
+                                        <TextBlock FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                                   TextWrapping="Wrap">
+                                            <Run Text="{Binding EventType}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="11"
+                                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                                   Margin="0,4,0,0"
+                                                   Opacity="0.85">
+                                            <Run Text="Grid: "/>
+                                            <Run Text="{Binding GridCoordinate}" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10"
+                                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                                   Margin="0,2,0,0"
+                                                   Opacity="0.7">
+                                            <Run Text="{Binding TimeAgo, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    </Grid>
+                </materialDesign:Card>
+            </Border>
+
+            <!-- Raid Alerts Panel -->
+            <Border Grid.Column="6" 
+                    Margin="12,0,12,0"
+                    Padding="0"
+                    materialDesign:ShadowAssist.ShadowDepth="Depth3"
+                    CornerRadius="8">
+                <materialDesign:Card Padding="20" Background="Transparent" materialDesign:ShadowAssist.ShadowDepth="Depth0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="Alert" 
+                                                 VerticalAlignment="Center" 
+                                                 Margin="0,0,10,0"
+                                                 Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                                 Width="24"
+                                                 Height="24"/>
+                        <TextBlock Text="Raid Alerts" 
+                                   FontSize="20" 
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   />
+                    </StackPanel>
+                    
+                    <ListBox Grid.Row="1"
+                             ItemsSource="{Binding RaidAlerts}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="False"
+                             BorderThickness="0"
+                             Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#CC0000"
+                                        BorderThickness="0"
+                                        Padding="12,10"
+                                        Margin="0,0,0,8"
+                                        Background="#FF4444"
+                                        Opacity="0.95"
+                                        CornerRadius="6"
+                                        materialDesign:ShadowAssist.ShadowDepth="Depth1">
+                                    <StackPanel>
+                                        <TextBlock FontSize="12"
+                                                   FontWeight="Bold"
+                                                   Foreground="White"
+                                                   TextWrapping="Wrap">
+                                            <Run Text="🚨 "/>
+                                            <Run Text="{Binding DeviceName}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="11"
+                                                   Foreground="White"
+                                                   Margin="0,2,0,0"
+                                                   TextWrapping="Wrap"
+                                                   Text="{Binding Message}"/>
+                                        <TextBlock FontSize="9"
+                                                   Foreground="White"
+                                                   Margin="0,2,0,0"
+                                                   Opacity="0.8">
+                                            <Run Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"/>
+                                            <Run Text=" - "/>
+                                            <Run Text="{Binding Server}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    </Grid>
+                </materialDesign:Card>
+            </Border>
+
+            <!-- Search Panel -->
+            <Border Grid.Column="8" 
+                    Margin="12,0,0,0"
+                    Padding="0"
+                    materialDesign:ShadowAssist.ShadowDepth="Depth3"
+                    CornerRadius="8"
+                    Background="{DynamicResource MaterialDesignCardBackground}">
+                <materialDesign:Card Padding="20" Background="Transparent" materialDesign:ShadowAssist.ShadowDepth="Depth0">
+                    <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
+                        <materialDesign:PackIcon Kind="Store" 
+                                                 VerticalAlignment="Center" 
+                                                 Margin="0,0,10,0"
+                                                 Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                                 Width="24"
+                                                 Height="24"/>
+                        <TextBlock Text="Shop Search" 
+                                   FontSize="20" 
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                   />
+                    </StackPanel>
+
+                    <!-- Filters -->
+                    <Border Grid.Row="1" 
+                            Padding="16"
+                            Margin="0,0,0,16"
+                            Background="{DynamicResource MaterialDesignCardBackground}"
+                            materialDesign:ShadowAssist.ShadowDepth="Depth1"
+                            CornerRadius="6">
+                        <StackPanel Orientation="Vertical">
+                            <TextBlock Text="Filters" 
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                       Margin="0,0,0,12"/>
+                            <CheckBox Content="Has Stock"
+                                      IsChecked="{Binding FilterHasStock}"
+                                      Margin="0,0,0,10"
+                                      VerticalAlignment="Center"
+                                      FontSize="13"
+                                      Foreground="{DynamicResource MaterialDesignBody}"/>
+                            <CheckBox Content="Sells Items"
+                                      IsChecked="{Binding FilterSells}"
+                                      Margin="0,0,0,10"
+                                      VerticalAlignment="Center"
+                                      FontSize="13"
+                                      Foreground="{DynamicResource MaterialDesignBody}"/>
+                            <CheckBox Content="Buys Items"
+                                      IsChecked="{Binding FilterBuys}"
+                                      Margin="0,0,0,0"
+                                      VerticalAlignment="Center"
+                                      FontSize="13"
+                                      Foreground="{DynamicResource MaterialDesignBody}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Item Name Search -->
+                    <TextBlock Grid.Row="2"
+                               Text="Item Name:"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,8"/>
+                    <ComboBox Grid.Row="3"
+                             Text="{Binding SearchItemName, UpdateSourceTrigger=PropertyChanged}"
+                             ItemsSource="{Binding AvailableItemNames}"
+                             materialDesign:HintAssist.Hint="Search by item name..."
+                             IsEditable="True"
+                             IsTextSearchEnabled="True"
+                             Margin="0,0,0,12"
+                             Padding="12,8"
+                             FontSize="13"
+                             Foreground="{DynamicResource MaterialDesignBody}"
+                             Background="{DynamicResource MaterialDesignPaper}"/>
+                    <TextBlock Grid.Row="4"
+                               FontSize="10"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Opacity="0.8"
+                               Margin="0,0,0,8"
+                               TextWrapping="Wrap">
+                        <Run Text="Available items: "/>
+                        <Run Text="{Binding AvailableItemNames.Count, Mode=OneWay}"/>
+                    </TextBlock>
+
+                    <!-- Results List -->
+                    <Grid Grid.Row="5">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                            <TextBlock Text="{Binding FilteredResultsText}"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"/>
+                        </StackPanel>
+                        <ListBox Grid.Row="1"
+                             ItemsSource="{Binding FilteredVendingMachines}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="False"
+                             ScrollViewer.PanningMode="VerticalOnly"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel">
+                            <ListBox.Resources>
+                                <Style TargetType="ScrollViewer" BasedOn="{StaticResource SmoothScrollViewer}"/>
+                            </ListBox.Resources>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,14"
+                                        Margin="0,0,0,6"
+                                        CornerRadius="4">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="15"
+                                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,8"/>
+                                            <TextBlock FontSize="13"
+                                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                                       Margin="0,0,0,4">
+                                                <Run Text="Grid: "/>
+                                                <Run FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}">
+                                                    <Run.Text>
+                                                        <MultiBinding Converter="{StaticResource GridCoordinateConverter}">
+                                                            <Binding Path="X"/>
+                                                            <Binding Path="Y"/>
+                                                        </MultiBinding>
+                                                    </Run.Text>
+                                                </Run>
+                                            </TextBlock>
+                                        <TextBlock FontSize="12"
+                                                   Foreground="{DynamicResource MaterialDesignBody}"
+                                                   Margin="0,0,0,8">
+                                            <Run Text="Items: "/>
+                                            <Run Text="{Binding Items.Count, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}"/>
+                                            <Run Text=" | Stock: "/>
+                                            <Run>
+                                                <Run.Style>
+                                                    <Style TargetType="Run">
+                                                        <Setter Property="Text" Value="No"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                <Setter Property="Text" Value="Yes"/>
+                                                                <Setter Property="Foreground" Value="#4CAF50"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Run.Style>
+                                            </Run>
+                                        </TextBlock>
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="8,4,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <!-- Item Icon -->
+                                                        <Border Grid.Column="0"
+                                                                Width="32"
+                                                                Height="32"
+                                                                Margin="0,0,10,0"
+                                                                Background="{DynamicResource MaterialDesignDivider}"
+                                                                CornerRadius="4"
+                                                                VerticalAlignment="Center">
+                                                            <Image Stretch="Uniform"
+                                                                   Margin="4"
+                                                                   ImageFailed="Image_ImageFailed"
+                                                                   Loaded="Image_Loaded">
+                                                                <Image.Source>
+                                                                    <Binding Path="IconUrl" 
+                                                                            Converter="{StaticResource IconPathConverter}" 
+                                                                            UpdateSourceTrigger="PropertyChanged"
+                                                                            Mode="OneWay"
+                                                                            FallbackValue="{x:Null}">
+                                                                        <Binding.TargetNullValue>
+                                                                            <x:Null/>
+                                                                        </Binding.TargetNullValue>
+                                                                    </Binding>
+                                                                </Image.Source>
+                                                                <Image.Style>
+                                                                    <Style TargetType="Image">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IconUrl, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}" Value="Visible">
+                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Image.Style>
+                                                            </Image>
+                                                        </Border>
+                                                        <!-- Item Name and Details -->
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock FontSize="13"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                                                       TextWrapping="Wrap">
+                                                                <Run Text="{Binding ItemName}"/>
+                                                            </TextBlock>
+                                                            <TextBlock FontSize="11"
+                                                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                                                       Margin="0,2,0,0">
+                                                                <Run Text="Qty: "/>
+                                                                <Run Text="{Binding Quantity}" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBody}"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                        <!-- Price -->
+                                                        <StackPanel Grid.Column="2" 
+                                                                    HorizontalAlignment="Right"
+                                                                    Margin="8,0,0,0">
+                                                            <StackPanel Orientation="Horizontal"
+                                                                       HorizontalAlignment="Right">
+                                                                <TextBlock FontSize="12"
+                                                                           FontWeight="Bold"
+                                                                           Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                                                           VerticalAlignment="Center">
+                                                                    <Run Text="{Binding Cost}"/>
+                                                                    <Run Text=" "/>
+                                                                </TextBlock>
+                                                                <Border Width="16"
+                                                                        Height="16"
+                                                                        Background="{DynamicResource MaterialDesignDivider}"
+                                                                        CornerRadius="2"
+                                                                        Margin="2,0,4,0"
+                                                                        VerticalAlignment="Center">
+                                                                    <Image Stretch="Uniform"
+                                                                           Margin="2"
+                                                                           ImageFailed="Image_ImageFailed"
+                                                                           Loaded="Image_Loaded">
+                                                                        <Image.Source>
+                                                                            <Binding Path="CurrencyIconUrl" 
+                                                                                    Converter="{StaticResource IconPathConverter}" 
+                                                                                    UpdateSourceTrigger="PropertyChanged"
+                                                                                    Mode="OneWay"
+                                                                                    FallbackValue="{x:Null}">
+                                                                                <Binding.TargetNullValue>
+                                                                                    <x:Null/>
+                                                                                </Binding.TargetNullValue>
+                                                                            </Binding>
+                                                                        </Image.Source>
+                                                                        <Image.Style>
+                                                                            <Style TargetType="Image">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding CurrencyIconUrl, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}" Value="Visible">
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Image.Style>
+                                                                    </Image>
+                                                                </Border>
+                                                                <TextBlock FontSize="12"
+                                                                           FontWeight="Bold"
+                                                                           Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"
+                                                                           VerticalAlignment="Center">
+                                                                    <Run Text="{Binding CurrencyItemName}"/>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                            <TextBlock FontSize="10"
+                                                                       Foreground="{DynamicResource MaterialDesignBody}"
+                                                                       HorizontalAlignment="Right"
+                                                                       Opacity="0.8">
+                                                                <Run Text="per item"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                    </Grid>
+                </materialDesign:Card>
+            </Border>
+        </Grid>
+
+            <!-- Footer with Logs -->
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="200" MinHeight="100"/>
+                </Grid.RowDefinitions>
+            
+            <!-- Toggle Logs Button -->
+            <Button Grid.Row="0" 
+                    Content="{Binding ShowLogs, Converter={StaticResource InverseBooleanConverter}, ConverterParameter=Show, StringFormat='{}{0} Logs'}"
+                    Click="ToggleLogs_Click"
+                    HorizontalAlignment="Right"
+                    Margin="12,8"
+                    Style="{StaticResource MaterialDesignFlatButton}"
+                    FontSize="11"
+                    Padding="12,6"/>
+            
+            <!-- Log Viewer (Collapsible) -->
+            <Border Grid.Row="1" 
+                    Visibility="{Binding ShowLogs, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    Margin="12"
+                    Padding="0"
+                    materialDesign:ShadowAssist.ShadowDepth="Depth2"
+                    CornerRadius="8"
+                    Background="{DynamicResource MaterialDesignCardBackground}">
+                <materialDesign:Card Padding="16" Background="Transparent" materialDesign:ShadowAssist.ShadowDepth="Depth0">
+                    <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <TextBlock Grid.Row="0" 
+                               Text="Application Logs (Last 200 entries)" 
+                               FontWeight="SemiBold"
+                               FontSize="16"
+                               Foreground="{DynamicResource MaterialDesignBody}"
+                               Margin="0,0,0,12"/>
+                    
+                    <Grid Grid.Row="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <StackPanel Grid.Row="0" 
+                                    Orientation="Horizontal" 
+                                    HorizontalAlignment="Right"
+                                    Margin="0,0,0,4">
+                            <Button Content="Copy All Logs" 
+                                    Click="CopyLogs_Click"
+                                    Style="{StaticResource MaterialDesignFlatButton}"
+                                    FontSize="11"
+                                    Padding="8,4"/>
+                            <Button Content="Clear" 
+                                    Click="ClearLogs_Click"
+                                    Style="{StaticResource MaterialDesignFlatButton}"
+                                    FontSize="11"
+                                    Padding="8,4"/>
+                        </StackPanel>
+                        
+                        <TextBox Grid.Row="1"
+                                 Text="{Binding LogText, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 FontFamily="Consolas"
+                                 FontSize="10"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 TextWrapping="Wrap"
+                                 Background="{DynamicResource MaterialDesignPaper}"
+                                 Foreground="{DynamicResource MaterialDesignBody}"
+                                 BorderThickness="0"
+                                 Padding="4"/>
+                    </Grid>
+                    </Grid>
+                </materialDesign:Card>
+            </Border>
+            
+            <!-- Footer Text -->
+            <materialDesign:ColorZone Grid.Row="0" 
+                                      Padding="12,8"
+                                      Mode="PrimaryDark"
+                                      VerticalAlignment="Stretch"
+                                      materialDesign:ShadowAssist.ShadowDepth="Depth2">
+                <TextBlock Text="Rust Desktop v1.0 - Unofficial Rust+ Desktop Client" 
+                           HorizontalAlignment="Center"
+                           Foreground="White"
+                           FontSize="11"
+                           Opacity="0.9"/>
+            </materialDesign:ColorZone>
+        </Grid>
+    </Grid>
+</Window>
 
