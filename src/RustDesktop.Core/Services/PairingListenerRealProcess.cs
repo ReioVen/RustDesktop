@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System;
 
 namespace RustDesktop.Core.Services;
 
@@ -78,12 +79,43 @@ public class PairingListenerRealProcess : IPairingListener
         // Detect if we should run via npx (preferred)
         bool useNpx = string.Equals(node, "npx", StringComparison.OrdinalIgnoreCase) ||
                       node.EndsWith("npx.exe", StringComparison.OrdinalIgnoreCase) ||
+                      node.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) ||
                       cli.StartsWith("@liamcottle", StringComparison.OrdinalIgnoreCase);
         
-        // If we need npx but node is not npx, use npx instead
-        string executable = useNpx && !string.Equals(node, "npx", StringComparison.OrdinalIgnoreCase) && !node.EndsWith("npx.exe", StringComparison.OrdinalIgnoreCase)
-            ? "npx"
-            : node;
+        // If we need npx but node is not npx, try to find npx
+        string executable = node;
+        if (useNpx && !string.Equals(node, "npx", StringComparison.OrdinalIgnoreCase) && 
+            !node.EndsWith("npx.exe", StringComparison.OrdinalIgnoreCase) &&
+            !node.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase))
+        {
+            // If we have bundled node.exe, try to find bundled npx.cmd
+            if (node.EndsWith("node.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                var nodeDir = Path.GetDirectoryName(node);
+                if (!string.IsNullOrEmpty(nodeDir))
+                {
+                    var bundledNpx = Path.Combine(nodeDir, "npx.cmd");
+                    if (File.Exists(bundledNpx))
+                    {
+                        executable = bundledNpx;
+                        useNpx = true;
+                    }
+                    else
+                    {
+                        // Fallback to system npx
+                        executable = "npx";
+                    }
+                }
+                else
+                {
+                    executable = "npx";
+                }
+            }
+            else
+            {
+                executable = "npx";
+            }
+        }
 
         // 1) Register if config doesn't exist
         if (!File.Exists(ConfigPath) || new FileInfo(ConfigPath).Length < 50)
@@ -119,9 +151,28 @@ public class PairingListenerRealProcess : IPairingListener
             ? $"-y @liamcottle/rustplus.js fcm-listen --config-file=\"{ConfigPath}\""
             : $"\"{cli}\" fcm-listen --config-file=\"{ConfigPath}\"";
         
+        // For the listener, we want to hide the console window completely
+        // Wrap npx.cmd in cmd.exe with /c and proper window hiding
+        string listenerExecutable = executable;
+        string listenerArgs = listenArgs;
+        
+        // Always wrap .cmd files in cmd.exe to ensure proper window hiding
+        if (executable.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) || executable.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+        {
+            listenerExecutable = "cmd.exe";
+            // Use /c with quotes and ensure window is hidden
+            listenerArgs = $"/c \"\"{executable}\" {listenArgs}\"";
+        }
+        // If executable is just "npx", also wrap it
+        else if (executable == "npx" || (!Path.IsPathRooted(executable) && executable.Contains("npx")))
+        {
+            listenerExecutable = "cmd.exe";
+            listenerArgs = $"/c \"npx {listenArgs}\"";
+        }
+        
         _listenProc = StartProcess(
-            executable,
-            listenArgs,
+            listenerExecutable,
+            listenerArgs,
             useNpx ? null : workingDir,
             HandleListenOutput,
             s => _log("[fcm-listen:err] " + s),
@@ -133,9 +184,19 @@ public class PairingListenerRealProcess : IPairingListener
         _listenProc.Exited += async (_, __) =>
         {
             _running = false;
+            var exitCode = _listenProc?.ExitCode ?? -1;
+            _log($"FCM listener exited with code {exitCode}");
             Stopped?.Invoke(this, EventArgs.Empty);
             if (_cts is null || _cts.IsCancellationRequested) return;
-            _log("FCM listener exited - restarting in 3s...");
+            
+            // Don't restart if it exited with code 0 (normal exit) or was cancelled
+            if (exitCode == 0)
+            {
+                _log("FCM listener exited normally (code 0) - not restarting");
+                return;
+            }
+            
+            _log("FCM listener exited unexpectedly - restarting in 3s...");
             try
             {
                 await Task.Delay(3000, _cts.Token);
@@ -172,9 +233,17 @@ public class PairingListenerRealProcess : IPairingListener
         if (s.IndexOf("Listening for FCM Notifications", StringComparison.OrdinalIgnoreCase) >= 0)
             Listening?.Invoke(this, EventArgs.Empty);
 
-        if (s.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            s.IndexOf("ERR!", StringComparison.OrdinalIgnoreCase) >= 0)
+        // Check for actual errors (ignore npm cleanup warnings)
+        // npm cleanup warnings contain "error" in paths but are not real errors
+        if ((s.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             s.IndexOf("ERR!", StringComparison.OrdinalIgnoreCase) >= 0) &&
+            !s.Contains("npm warn cleanup") &&
+            !s.Contains("EPERM") &&
+            !s.Contains("operation not permitted") &&
+            !s.Contains("rmdir"))
+        {
             Failed?.Invoke(this, s);
+        }
 
         // Parse rustplus:// URLs
         var urlMatch = RustUrl.Match(s);
@@ -411,11 +480,13 @@ public class PairingListenerRealProcess : IPairingListener
     private static string? FindNode()
     {
         // 1) Try bundled Node.js (like working version)
-        var bundled = Path.Combine(AppContext.BaseDirectory, "runtime", "node-win-x64", "node.exe");
+        // Use AppDomain.CurrentDomain.BaseDirectory for consistency with rest of codebase
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var bundled = Path.Combine(baseDir, "runtime", "node-win-x64", "node.exe");
         if (File.Exists(bundled))
         {
             // Check for bundled npx too
-            var bundledNpx = Path.Combine(AppContext.BaseDirectory, "runtime", "node-win-x64", "npx.cmd");
+            var bundledNpx = Path.Combine(baseDir, "runtime", "node-win-x64", "npx.cmd");
             if (File.Exists(bundledNpx))
                 return bundledNpx;
             return bundled;
@@ -552,7 +623,8 @@ public class PairingListenerRealProcess : IPairingListener
     private static (string cli, string workingDir)? ResolveRustplusCli()
     {
         // 1) Try bundled rustplus-cli
-        var bundledRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "rustplus-cli");
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var bundledRoot = Path.Combine(baseDir, "runtime", "rustplus-cli");
         if (Directory.Exists(bundledRoot))
         {
             var pkgRoot = Path.Combine(bundledRoot, "node_modules", "@liamcottle", "rustplus.js");
@@ -565,7 +637,7 @@ public class PairingListenerRealProcess : IPairingListener
         }
 
         // 2) Try extracting from zip
-        var zipPath = Path.Combine(AppContext.BaseDirectory, "runtime", "rustplus-cli.zip");
+        var zipPath = Path.Combine(baseDir, "runtime", "rustplus-cli.zip");
         if (File.Exists(zipPath))
         {
             var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -603,45 +675,62 @@ public class PairingListenerRealProcess : IPairingListener
         string fileName, string args, string? workingDir,
         Action<string>? onOut, Action<string>? onErr, bool noWindow = true)
     {
-        // On Windows, if fileName is "npx" or ends with "npx.cmd", we might need to use cmd.exe
+        // If fileName is already a full path to npx.cmd, use it directly
         string actualFileName = fileName;
         string actualArgs = args;
         
-        if (fileName == "npx" || fileName.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) || fileName.Contains("npx"))
+        // If fileName is just "npx" (not a path), try to find it
+        if (fileName == "npx" || (fileName.EndsWith("npx", StringComparison.OrdinalIgnoreCase) && !Path.IsPathRooted(fileName)))
         {
-            // Try to find npx.cmd path (Windows needs .cmd)
-            var npxPath = GetExecutablePath("npx");
-            if (!string.IsNullOrEmpty(npxPath))
+            // First, check if we have bundled npx
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var bundledNpx = Path.Combine(baseDir, "runtime", "node-win-x64", "npx.cmd");
+            if (File.Exists(bundledNpx))
             {
-                // If we got npx (not .cmd), try to find npx.cmd in same directory
-                if (!npxPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) && !npxPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                actualFileName = bundledNpx;
+            }
+            else
+            {
+                // Try to find npx.cmd path in system PATH
+                var npxPath = GetExecutablePath("npx");
+                if (!string.IsNullOrEmpty(npxPath))
                 {
-                    var dir = Path.GetDirectoryName(npxPath);
-                    if (!string.IsNullOrEmpty(dir))
+                    // If we got npx (not .cmd), try to find npx.cmd in same directory
+                    if (!npxPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) && !npxPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                     {
-                        var npxCmd = Path.Combine(dir, "npx.cmd");
-                        if (File.Exists(npxCmd))
-                            npxPath = npxCmd;
+                        var dir = Path.GetDirectoryName(npxPath);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            var npxCmd = Path.Combine(dir, "npx.cmd");
+                            if (File.Exists(npxCmd))
+                                npxPath = npxCmd;
+                        }
                     }
-                }
-                
-                if (File.Exists(npxPath))
-                {
-                    actualFileName = npxPath;
+                    
+                    if (File.Exists(npxPath))
+                    {
+                        actualFileName = npxPath;
+                    }
+                    else
+                    {
+                        // Fallback: use cmd.exe to run npx
+                        actualFileName = "cmd.exe";
+                        actualArgs = $"/c \"npx {args}\"";
+                    }
                 }
                 else
                 {
-                    // Fallback: use cmd.exe to run npx
+                    // If npx is not found, use cmd.exe to run it
                     actualFileName = "cmd.exe";
                     actualArgs = $"/c \"npx {args}\"";
                 }
             }
-            else if (fileName == "npx")
-            {
-                // If npx is not found, use cmd.exe to run it
-                actualFileName = "cmd.exe";
-                actualArgs = $"/c \"npx {args}\"";
-            }
+        }
+        // If fileName is already a full path (ends with .cmd or .exe), use it as-is
+        else if (fileName.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) || fileName.EndsWith("npx.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            // Use the provided path directly
+            actualFileName = fileName;
         }
         
         var psi = new ProcessStartInfo(actualFileName, actualArgs)
@@ -650,8 +739,24 @@ public class PairingListenerRealProcess : IPairingListener
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = noWindow,
-            WorkingDirectory = string.IsNullOrEmpty(workingDir) ? "" : workingDir
+            WorkingDirectory = string.IsNullOrEmpty(workingDir) ? "" : workingDir,
+            WindowStyle = noWindow ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal,
+            ErrorDialog = false
         };
+        
+        // For cmd.exe, ensure we're not showing a window by using additional flags
+        if (actualFileName.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase) && noWindow)
+        {
+            psi.CreateNoWindow = true;
+            psi.WindowStyle = ProcessWindowStyle.Hidden;
+            // Prepend /q to cmd.exe to suppress echo and make it quieter
+            if (!actualArgs.StartsWith("/q", StringComparison.OrdinalIgnoreCase) && actualArgs.StartsWith("/c", StringComparison.OrdinalIgnoreCase))
+            {
+                // Replace /c with /q /c to suppress echo
+                actualArgs = actualArgs.Replace("/c", "/q /c", StringComparison.OrdinalIgnoreCase);
+                psi.Arguments = actualArgs;
+            }
+        }
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) => { if (e.Data != null) onOut?.Invoke(e.Data); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) onErr?.Invoke(e.Data); };
@@ -664,55 +769,88 @@ public class PairingListenerRealProcess : IPairingListener
     private static async Task<int> RunCliAsync(
         string node, string args, string? workingDir, CancellationToken token)
     {
-        // On Windows, if node is "npx" or ends with "npx.cmd", we might need to use cmd.exe
+        // If node is already a full path to npx.cmd, use it directly
         string actualFileName = node;
         string actualArgs = args;
         
-        if (node == "npx" || node.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) || node.Contains("npx"))
+        // If node is just "npx" (not a path), try to find it
+        if (node == "npx" || (node.EndsWith("npx", StringComparison.OrdinalIgnoreCase) && !Path.IsPathRooted(node)))
         {
-            // Try to find npx.cmd path (Windows needs .cmd)
-            var npxPath = GetExecutablePath("npx");
-            if (!string.IsNullOrEmpty(npxPath))
+            // First, check if we have bundled npx
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var bundledNpx = Path.Combine(baseDir, "runtime", "node-win-x64", "npx.cmd");
+            if (File.Exists(bundledNpx))
             {
-                // If we got npx (not .cmd), try to find npx.cmd in same directory
-                if (!npxPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) && !npxPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                actualFileName = bundledNpx;
+            }
+            else
+            {
+                // Try to find npx.cmd path in system PATH
+                var npxPath = GetExecutablePath("npx");
+                if (!string.IsNullOrEmpty(npxPath))
                 {
-                    var dir = Path.GetDirectoryName(npxPath);
-                    if (!string.IsNullOrEmpty(dir))
+                    // If we got npx (not .cmd), try to find npx.cmd in same directory
+                    if (!npxPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) && !npxPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                     {
-                        var npxCmd = Path.Combine(dir, "npx.cmd");
-                        if (File.Exists(npxCmd))
-                            npxPath = npxCmd;
+                        var dir = Path.GetDirectoryName(npxPath);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            var npxCmd = Path.Combine(dir, "npx.cmd");
+                            if (File.Exists(npxCmd))
+                                npxPath = npxCmd;
+                        }
                     }
-                }
-                
-                if (File.Exists(npxPath))
-                {
-                    actualFileName = npxPath;
+                    
+                    if (File.Exists(npxPath))
+                    {
+                        actualFileName = npxPath;
+                    }
+                    else
+                    {
+                        // Fallback: use cmd.exe to run npx
+                        actualFileName = "cmd.exe";
+                        actualArgs = $"/c \"npx {args}\"";
+                    }
                 }
                 else
                 {
-                    // Fallback: use cmd.exe to run npx
+                    // If npx is not found, use cmd.exe to run it
                     actualFileName = "cmd.exe";
                     actualArgs = $"/c \"npx {args}\"";
                 }
             }
-            else if (node == "npx")
-            {
-                // If npx is not found, use cmd.exe to run it
-                actualFileName = "cmd.exe";
-                actualArgs = $"/c \"npx {args}\"";
-            }
+        }
+        // If node is already a full path (ends with .cmd or .exe), use it as-is
+        else if (node.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase) || node.EndsWith("npx.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            // Use the provided path directly
+            actualFileName = node;
         }
         
         var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var psi = new ProcessStartInfo(actualFileName, actualArgs)
+        
+        // For registration, we need to show window for browser, but try to minimize console
+        // If it's a .cmd file, wrap it to control window visibility better
+        string regExecutable = actualFileName;
+        string regArgs = actualArgs;
+        bool showWindow = true; // Registration needs browser window
+        
+        // If it's npx.cmd, we still need browser but can minimize console
+        if (actualFileName.EndsWith("npx.cmd", StringComparison.OrdinalIgnoreCase))
+        {
+            regExecutable = "cmd.exe";
+            regArgs = $"/c \"\"{actualFileName}\" {actualArgs}\"";
+            showWindow = true; // Still need browser
+        }
+        
+        var psi = new ProcessStartInfo(regExecutable, regArgs)
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = false, // Browser needs to open for registration
-            WorkingDirectory = string.IsNullOrEmpty(workingDir) ? "" : workingDir
+            CreateNoWindow = !showWindow, // Only show window for registration (browser)
+            WorkingDirectory = string.IsNullOrEmpty(workingDir) ? "" : workingDir,
+            WindowStyle = showWindow ? ProcessWindowStyle.Minimized : ProcessWindowStyle.Hidden
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) => { if (!string.IsNullOrEmpty(e.Data)) Debug.WriteLine("[out] " + e.Data); };
@@ -726,6 +864,11 @@ public class PairingListenerRealProcess : IPairingListener
             return await tcs.Task.ConfigureAwait(false);
     }
 }
+
+
+
+
+
 
 
 

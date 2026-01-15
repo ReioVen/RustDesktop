@@ -540,7 +540,19 @@
                                    FontSize="20" 
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource MaterialDesignBody}"
-                                   />
+                                   VerticalAlignment="Center"/>
+                        <Button Command="{Binding RefreshShopsCommand}"
+                                ToolTip="Refresh all shops and update quantities"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                Margin="10,0,0,0"
+                                Padding="8"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Right">
+                            <materialDesign:PackIcon Kind="Refresh" 
+                                                     Width="20" 
+                                                     Height="20"
+                                                     Foreground="{DynamicResource MaterialDesignPrimaryHueMidBrush}"/>
+                        </Button>
                     </StackPanel>
 
                     <!-- Filters -->
@@ -846,7 +858,7 @@
                     </Grid.RowDefinitions>
                     
                     <TextBlock Grid.Row="0" 
-                               Text="Application Logs (Last 200 entries)" 
+                               Text="Application Logs (Last 1000 entries)" 
                                FontWeight="SemiBold"
                                FontSize="16"
                                Foreground="{DynamicResource MaterialDesignBody}"

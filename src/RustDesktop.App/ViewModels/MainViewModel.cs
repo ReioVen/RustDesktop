@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RustDesktop.Core.Models;
 using RustDesktop.Core.Services;
+using RustDesktop.App.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -23,6 +24,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ILoggingService? _logger;
     private readonly IItemNameService? _itemNameService;
     private readonly IconValidationService? _iconValidationService;
+    private readonly INotificationService? _notificationService;
     private DispatcherTimer? _vendingMachinePollTimer;
     private CancellationTokenSource? _vendingMachinePollCts;
     private DispatcherTimer? _searchDebounceTimer;
@@ -165,7 +167,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    public MainViewModel(IRustPlusService rustPlusService, IRustDataService rustDataService, IActiveSessionService activeSessionService, IPairingService pairingService, IPairingListener? pairingListener = null, ILoggingService? logger = null, IItemNameService? itemNameService = null, IconValidationService? iconValidationService = null)
+    public MainViewModel(IRustPlusService rustPlusService, IRustDataService rustDataService, IActiveSessionService activeSessionService, IPairingService pairingService, IPairingListener? pairingListener = null, ILoggingService? logger = null, IItemNameService? itemNameService = null, IconValidationService? iconValidationService = null, INotificationService? notificationService = null)
     {
         _rustPlusService = rustPlusService;
         _rustDataService = rustDataService;
@@ -175,6 +177,7 @@ public partial class MainViewModel : ObservableObject
         _logger = logger;
         _itemNameService = itemNameService;
         _iconValidationService = iconValidationService;
+        _notificationService = notificationService;
         _rustPlusService.MapUpdated += OnMapUpdated;
         _rustPlusService.VendingMachinesUpdated += OnVendingMachinesUpdated;
         _rustPlusService.WorldEventsUpdated += OnWorldEventsUpdated;
@@ -204,8 +207,8 @@ public partial class MainViewModel : ObservableObject
         if (_logger != null)
         {
             _logger.LogAdded += OnLogAdded;
-            // Load only recent 50 logs to avoid cluttering UI on startup
-            var recentLogs = _logger.GetRecentLogs(50);
+            // Load only recent 100 logs to avoid cluttering UI on startup
+            var recentLogs = _logger.GetRecentLogs(100);
             foreach (var log in recentLogs)
             {
                 LogMessages.Add(log);
@@ -220,8 +223,8 @@ public partial class MainViewModel : ObservableObject
         if (Dispatcher.CurrentDispatcher.CheckAccess())
         {
             LogMessages.Add(logMessage);
-            // Keep only last 200 logs to prevent UI from getting too full
-            while (LogMessages.Count > 200)
+            // Keep only last 1000 logs to allow copying more at a time
+            while (LogMessages.Count > 1000)
             {
                 LogMessages.RemoveAt(0);
             }
@@ -232,8 +235,8 @@ public partial class MainViewModel : ObservableObject
             Dispatcher.CurrentDispatcher.Invoke(() =>
             {
                 LogMessages.Add(logMessage);
-                // Keep only last 200 logs to prevent UI from getting too full
-                while (LogMessages.Count > 200)
+                // Keep only last 1000 logs to allow copying more at a time
+                while (LogMessages.Count > 1000)
                 {
                     LogMessages.RemoveAt(0);
                 }
@@ -603,41 +606,77 @@ public partial class MainViewModel : ObservableObject
                 _logger?.LogInfo("CurrentServer already set - skipping registry check to preserve newly paired server");
             }
             
-            // STEP 3: No existing pairing found - start FCM listener
+            // STEP 3: No existing pairing found - try FCM listener or guide user to mobile app pairing
             _logger?.LogWarning("⚠ No existing pairing credentials found");
             _logger?.LogInfo("");
-            _logger?.LogInfo("=== STARTING FCM PAIRING LISTENER ===");
-            _logger?.LogInfo("Starting FCM listener to receive pairing notifications...");
-            _logger?.LogInfo("You need to initiate pairing in-game:");
-            _logger?.LogInfo("  1. Make sure Rust is running and connected to server");
-            _logger?.LogInfo("  2. Press ESC → Rust+ → Pair");
-            _logger?.LogInfo("  3. The pairing info will be received via FCM");
-            _logger?.LogInfo("");
-            
-            StatusMessage = "Starting FCM listener... Waiting for pairing...";
             
             // Try to start FCM listener (requires Node.js)
+            bool fcmAvailable = false;
             if (_pairingListener != null)
             {
                 try
                 {
+                    _logger?.LogInfo("=== ATTEMPTING FCM PAIRING LISTENER ===");
+                    _logger?.LogInfo("Starting FCM listener to receive pairing notifications...");
+                    _logger?.LogInfo("You need to initiate pairing in-game:");
+                    _logger?.LogInfo("  1. Make sure Rust is running and connected to server");
+                    _logger?.LogInfo("  2. Press ESC → Rust+ → Pair");
+                    _logger?.LogInfo("  3. The pairing info will be received via FCM");
+                    _logger?.LogInfo("");
+                    
+                    StatusMessage = "Starting FCM listener...";
+                    
                     await _pairingListener.StartAsync();
                     _logger?.LogInfo("✓ FCM listener started successfully!");
                     _logger?.LogInfo("Waiting for pairing notification...");
                     StatusMessage = "FCM listener active. Initiate pairing in-game (ESC → Rust+ → Pair)";
+                    fcmAvailable = true;
                 }
                 catch (Exception ex)
                 {
                     _logger?.LogError($"Failed to start FCM listener: {ex.Message}");
-                    _logger?.LogInfo("FCM listener requires Node.js to be installed.");
-                    _logger?.LogInfo("Alternative: Pair via mobile Rust+ app, then click 'Pair Server' again.");
-                    StatusMessage = "FCM listener failed. Please pair via mobile app first, then click 'Pair Server' again";
+                    _logger?.LogInfo("");
+                    _logger?.LogInfo("═══════════════════════════════════════════════════════");
+                    _logger?.LogInfo("  FCM LISTENER REQUIRES NODE.JS");
+                    _logger?.LogInfo("═══════════════════════════════════════════════════════");
+                    _logger?.LogInfo("");
+                    _logger?.LogInfo("Node.js is not installed on your system.");
+                    _logger?.LogInfo("");
+                    _logger?.LogInfo("OPTION 1 (Recommended - No Node.js needed):");
+                    _logger?.LogInfo("  1. Install Rust+ mobile app on your phone");
+                    _logger?.LogInfo("  2. Open Rust+ app and pair with your server");
+                    _logger?.LogInfo("  3. Come back to this app and click 'Pair Server' again");
+                    _logger?.LogInfo("  4. The app will automatically detect the pairing from mobile app");
+                    _logger?.LogInfo("");
+                    _logger?.LogInfo("OPTION 2 (If you want in-game pairing):");
+                    _logger?.LogInfo("  1. Install Node.js from: https://nodejs.org/ (LTS version)");
+                    _logger?.LogInfo("  2. Restart this application");
+                    _logger?.LogInfo("  3. Click 'Pair Server' again");
+                    _logger?.LogInfo("  4. Then pair in-game (ESC → Rust+ → Pair)");
+                    _logger?.LogInfo("");
+                    _logger?.LogInfo("═══════════════════════════════════════════════════════");
+                    _logger?.LogInfo("");
+                    
+                    StatusMessage = "Node.js not found. Please pair via mobile app (see logs for instructions)";
+                    
+                    // Show user-friendly message box
+                    System.Windows.MessageBox.Show(
+                        "Node.js is required for in-game pairing.\n\n" +
+                        "RECOMMENDED: Pair via Rust+ mobile app instead:\n" +
+                        "1. Install Rust+ app on your phone\n" +
+                        "2. Pair with your server in the mobile app\n" +
+                        "3. Click 'Pair Server' again in this app\n\n" +
+                        "OR install Node.js from nodejs.org for in-game pairing.",
+                        "Node.js Not Found",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
                 }
             }
-            else
+            
+            if (!fcmAvailable)
             {
                 _logger?.LogWarning("FCM listener not available. Please pair via mobile app first.");
-                StatusMessage = "Please pair via mobile app first, then click 'Pair Server' again";
+                StatusMessage = "Please pair via mobile Rust+ app first, then click 'Pair Server' again";
             }
         }
         catch (Exception ex)
@@ -822,7 +861,16 @@ public partial class MainViewModel : ObservableObject
                 RaidAlerts.RemoveAt(RaidAlerts.Count - 1);
             }
             
-            // Show notification (optional - you can add a toast notification here)
+            // Show desktop notification with 5 second delay for testing
+            _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ =>
+            {
+                _notificationService?.ShowNotification(
+                    "🚨 Raid Alert",
+                    $"{alarm.DeviceName}: {alarm.Message}",
+                    null
+                );
+            });
+            
             StatusMessage = $"🚨 Raid Alert: {alarm.DeviceName}";
         });
     }
@@ -1046,6 +1094,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(AllowConcurrentExecutions = false)]
+    private async Task RefreshShopsAsync()
+    {
+        await RefreshVendingMachinesAsync();
+        // Filter will be automatically triggered by OnVendingMachinesChanged
+    }
+
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task RefreshTeamInfoAsync()
     {
         if (!IsConnected) return;
@@ -1122,6 +1177,18 @@ public partial class MainViewModel : ObservableObject
                     WorldEvents.Insert(0, evt);
                     newEventsCount++;
                     _logger?.LogInfo($"  → Added NEW event");
+                    
+                    // Show notification for new world events with 5 second delay for testing
+                    var eventType = evt.EventType;
+                    var gridCoord = evt.GridCoordinate;
+                    _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ =>
+                    {
+                        _notificationService?.ShowNotification(
+                            "🌍 World Event",
+                            $"{eventType} spawned at {gridCoord}",
+                            null
+                        );
+                    });
                 }
             }
             
@@ -1339,15 +1406,22 @@ public partial class MainViewModel : ObservableObject
             filtered = filtered.Where(vm => vm.IsActive && vm.Items != null && vm.Items.Count > 0);
         }
 
-        // Filter by item name
+        // Filter by item name - also filter out shops with empty quantities for the searched item
         if (!string.IsNullOrWhiteSpace(SearchItemName))
         {
             var searchTerm = SearchItemName.Trim().ToLowerInvariant();
             filtered = filtered.Where(vm => 
-                vm.Items != null && vm.Items.Any(item => 
+            {
+                if (vm.Items == null) return false;
+                
+                // Find items matching the search term
+                var matchingItems = vm.Items.Where(item => 
                     item.ItemName.ToLowerInvariant().Contains(searchTerm)
-                )
-            );
+                ).ToList();
+                
+                // Only include shops that have matching items with quantity > 0
+                return matchingItems.Any(item => item.Quantity > 0);
+            });
         }
 
         // Filter by sells (items being sold - currently all items are sell orders)

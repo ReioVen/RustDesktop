@@ -5,8 +5,16 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>RustDesktop</AssemblyName>
     <RootNamespace>RustDesktop.App</RootNamespace>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <ApplicationIcon>Icons\app.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +23,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
     <PackageReference Include="MaterialDesignThemes" Version="4.9.0" />
     <PackageReference Include="MaterialDesignColors" Version="2.1.4" />
+    <PackageReference Include="Notifications.Wpf.Core" Version="2.0.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,6 +51,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Icons\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
+    <!-- App Icon -->
+    <Content Include="Icons\app.ico" Condition="Exists('Icons\app.ico')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- App Icon as Resource for WPF -->
+    <Resource Include="Icons\app.ico" Condition="Exists('Icons\app.ico')">
+      <Link>Icons\app.ico</Link>
+    </Resource>
   </ItemGroup>
 
 </Project>

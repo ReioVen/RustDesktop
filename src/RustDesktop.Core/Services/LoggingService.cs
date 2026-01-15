@@ -50,8 +50,8 @@ public class LoggingService : ILoggingService
         
         _logs.Enqueue(logEntry);
         
-        // Keep only last 500 logs in memory to prevent excessive memory usage
-        while (_logs.Count > 500)
+        // Keep only last 1000 logs in memory to allow copying more at a time
+        while (_logs.Count > 1000)
         {
             _logs.TryDequeue(out _);
         }
@@ -76,7 +76,7 @@ public class LoggingService : ILoggingService
         LogAdded?.Invoke(this, logEntry);
     }
 
-    public List<string> GetRecentLogs(int count = 50)
+    public List<string> GetRecentLogs(int count = 100)
     {
         return _logs.TakeLast(count).ToList();
     }

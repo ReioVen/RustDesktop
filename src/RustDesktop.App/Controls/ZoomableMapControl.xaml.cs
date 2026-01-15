@@ -498,18 +498,7 @@ public partial class ZoomableMapControl : UserControl
 
     private string? FindShopImagePath(string imageFileName)
     {
-        // Try relative to executable (where it gets copied during build)
-        var exeDir = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-        if (!string.IsNullOrEmpty(exeDir))
-        {
-            var relativePath = System.IO.Path.Combine(exeDir, "PICS", imageFileName);
-            if (File.Exists(relativePath))
-            {
-                return relativePath;
-            }
-        }
-        
-        // Try base directory (alternative location)
+        // Try base directory (works for both development and published builds)
         var basePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PICS", imageFileName);
         if (File.Exists(basePath))
         {

@@ -45,8 +45,6 @@ public class ItemNameService : IItemNameService
         {
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rust-item-list.json"),
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rust_items.json"),
-            Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", "rust-item-list.json"),
-            Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", "rust_items.json"),
             Path.Combine(@"C:\Programming\RustDesktop\rustplus-desktop-3.0.1\rustplus-desktop-3.0.1\RustPlusDesktop", "rust-item-list.json"),
             Path.Combine(@"C:\Programming\RustDesktop\rustplus-desktop-3.0.1\rustplus-desktop-3.0.1\RustPlusDesktop", "rust_items.json")
         };
