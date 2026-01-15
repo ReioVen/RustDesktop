@@ -252,9 +252,8 @@ start """" ""{Path.Combine(appDir, "RustDesktop.exe")}""
             
             // Get update URL - use GitHub Releases API
             // Format: https://api.github.com/repos/{owner}/{repo}/releases/latest
-            // TODO: Replace with your GitHub repository details
-            var githubOwner = "YOUR_GITHUB_USERNAME"; // Replace with your GitHub username
-            var githubRepo = "YOUR_REPO_NAME"; // Replace with your repository name
+            var githubOwner = "ReioVen"; // Your GitHub username
+            var githubRepo = "RustDesktop"; // Your repository name
             var updateUrl = $"https://api.github.com/repos/{githubOwner}/{githubRepo}/releases/latest";
             
             var updateInfo = await updateService.CheckForUpdatesAsync(updateUrl);
