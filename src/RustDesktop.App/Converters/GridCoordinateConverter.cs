@@ -61,27 +61,9 @@ public class GridCoordinateConverter : IMultiValueConverter
         int cells = Math.Max(1, (int)Math.Round(worldSizeD / CellSize));
         double cell = worldSizeD / cells;
         
-        // Calculate grid indices
-        // Testing data shows consistent pattern:
-        // - V13 → V11: row -2
-        // - AC4 → AB2: col -1, row -2
-        // - AF11 → AD8: col -2, row -3
-        // - AE3 → AD1: col -1, row -2
-        // - C16 → C13: row -3
-        // - AE18 → AD15: col -1, row -3
-        // 
-        // Pattern: We're showing coordinates 1-2 columns left and 2-3 rows lower
-        // This means our indices are too small. Need to add offset to push coordinates into correct cells.
-        double xD = xCoord;
-        double yD = yCoord;
-        
-        // FIX: Add offset to correct the systematic error
-        // Every shop is 1 letter to the right - reducing X offset by 1 cell
-        double offsetX = cell * 0.3;  // Reduced from 1.3 - was pushing 1 column too far right
-        double offsetY = cell * 2.5;  // Keep Y offset - push rows up (since we're calculating (worldSize - y))
-        
-        int col = Math.Clamp((int)Math.Floor((xD + offsetX) / cell), 0, cells - 1);
-        int row = Math.Clamp((int)Math.Floor((worldSizeD - yD + offsetY) / cell), 0, cells - 1);
+        // Rust grid labels are derived directly from world coordinates and map size.
+        int col = Math.Clamp((int)Math.Floor(xCoord / cell), 0, cells - 1);
+        int row = Math.Clamp((int)Math.Floor((worldSizeD - yCoord) / cell), 0, cells - 1);
         
         // Convert to grid format: Letter(s) + Number
         string letter = ColumnLabel(col);
@@ -139,19 +121,9 @@ public class VendingMachineGridConverter : IValueConverter
         int cells = Math.Max(1, (int)Math.Round(worldSizeD / CellSize));
         double cell = worldSizeD / cells;
         
-        // Calculate grid indices
-        // Testing shows we're consistently 1-2 columns left and 2-3 rows lower
-        // Adding offset to correct this
-        double xD = vm.X;
-        double yD = vm.Y;
-        
-        // FIX: Add offset to correct the systematic error
-        // Every shop is 1 letter to the right - reducing X offset by 1 cell
-        double offsetX = cell * 0.3;  // Reduced from 1.3 - was pushing 1 column too far right
-        double offsetY = cell * 2.5;  // Keep Y offset - push rows up (since we're calculating (worldSize - y))
-        
-        int col = Math.Clamp((int)Math.Floor((xD + offsetX) / cell), 0, cells - 1);
-        int row = Math.Clamp((int)Math.Floor((worldSizeD - yD + offsetY) / cell), 0, cells - 1);
+        // Rust grid labels are derived directly from world coordinates and map size.
+        int col = Math.Clamp((int)Math.Floor(vm.X / cell), 0, cells - 1);
+        int row = Math.Clamp((int)Math.Floor((worldSizeD - vm.Y) / cell), 0, cells - 1);
         
         // Convert to grid format
         string letter = ColumnLabel(col);

@@ -268,9 +268,17 @@
                             Command="{Binding DisconnectCommand}"
                             Style="{StaticResource MaterialDesignOutlinedButton}"
                             Padding="16,8"
-                            Margin="0,0,0,24"
+                            Margin="0,0,0,8"
                             FontSize="13"
                             IsEnabled="{Binding IsConnected}"/>
+                    
+                    <Button Content="Reset Connections"
+                            Command="{Binding ResetConnectionsCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Padding="16,8"
+                            Margin="0,0,0,24"
+                            FontSize="13"
+                            ToolTip="Clear pairing/auth/listener state and start fresh"/>
 
                     <Separator Margin="0,0,0,20" Opacity="0.3"/>
 
@@ -360,6 +368,7 @@
                             <!-- Zoomable Map Control (Full Size) -->
                             <controls:ZoomableMapControl 
                                 ImageData="{Binding MapInfo.ImageData}"
+                                WorldSize="{Binding MapInfo.Width}"
                                 VendingMachines="{Binding VendingMachines}"
                                 TeamMembers="{Binding TeamMembers}"
                                 Visibility="{Binding MapInfo, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}"/>
@@ -665,6 +674,7 @@
                                                         <MultiBinding Converter="{StaticResource GridCoordinateConverter}">
                                                             <Binding Path="X"/>
                                                             <Binding Path="Y"/>
+                                                            <Binding Path="DataContext.MapInfo.Width" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                         </MultiBinding>
                                                     </Run.Text>
                                                 </Run>

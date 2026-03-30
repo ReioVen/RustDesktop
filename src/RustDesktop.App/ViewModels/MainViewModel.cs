@@ -11,6 +11,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows;
+using System.IO;
+using Microsoft.Win32;
 
 namespace RustDesktop.App.ViewModels;
 
@@ -330,10 +332,15 @@ public partial class MainViewModel : ObservableObject
                     return;
                 }
                 
+                // If detection gave a Steam relay IP (162.254.x.x), prefer saved pairing (actual server from FCM)
+                if (CurrentServer != null &&
+                    IsSteamRelayIp(CurrentServer.IpAddress) &&
+                    (CurrentServer.IpAddress != pairedServer.IpAddress || CurrentServer.Port != pairedServer.Port))
+                {
+                    _logger?.LogInfo($"Detected relay endpoint {CurrentServer.IpAddress}:{CurrentServer.Port}; using paired server {pairedServer.IpAddress}:{pairedServer.Port}.");
+                }
                 serverInfo = pairedServer;
                 _logger?.LogInfo($"✓ Using saved paired server from registry/files: {pairedServer.IpAddress}:{pairedServer.Port}");
-                _logger?.LogWarning("⚠⚠⚠ If this is the OLD server, the issue is that CurrentServer was NULL!");
-                _logger?.LogWarning("⚠ Make sure you paired the NEW server and CurrentServer was set!");
             }
             
             // Final validation and logging
@@ -753,12 +760,15 @@ public partial class MainViewModel : ObservableObject
                 GamePort = payload.Port // May need adjustment
             };
             
+            // Set immediately to avoid race if user clicks Connect while save is in progress
+            CurrentServer = serverInfo;
+            StatusMessage = $"✓ Pairing received: {serverInfo.Name ?? serverInfo.IpAddress}";
+
             // Clear old pairing data first to ensure we use the new server
             _pairingService.ClearPairing();
             // Save the new pairing credentials
             await _pairingService.SavePairingAsync(serverInfo);
-            
-            CurrentServer = serverInfo;
+
             StatusMessage = $"✓ Successfully paired with {serverInfo.Name ?? serverInfo.IpAddress}!";
             _logger?.LogInfo($"✓✓✓ New server paired via FCM and set as CurrentServer: {serverInfo.IpAddress}:{serverInfo.Port}");
             _logger?.LogInfo("Pairing credentials saved. Automatically connecting...");
@@ -1023,6 +1033,63 @@ public partial class MainViewModel : ObservableObject
         MapInfo = null;
         VendingMachines.Clear();
         SmartDevices.Clear();
+    }
+
+    [RelayCommand(AllowConcurrentExecutions = false)]
+    private async Task ResetConnectionsAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            _logger?.LogInfo("=== Resetting connection state ===");
+
+            if (_pairingListener != null)
+            {
+                try { await _pairingListener.StopAsync(); } catch { }
+            }
+
+            await _rustPlusService.DisconnectAsync();
+            IsConnected = false;
+            IsAuthenticated = false;
+            CurrentServer = null;
+
+            _pairingService.ClearPairing();
+
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var rustDesktopDir = Path.Combine(appData, "RustDesktop");
+            var pairingFile = Path.Combine(rustDesktopDir, "pairing.json");
+            var configFile = Path.Combine(rustDesktopDir, "rustplusjs-config.json");
+            var steamAuthFile = Path.Combine(rustDesktopDir, "steam-auth.json");
+
+            try { if (File.Exists(pairingFile)) File.Delete(pairingFile); } catch { }
+            try { if (File.Exists(configFile)) File.Delete(configFile); } catch { }
+            try { if (File.Exists(steamAuthFile)) File.Delete(steamAuthFile); } catch { }
+
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(@"Software\Facepunch Studios LTD\Rust", true);
+                if (key != null)
+                {
+                    key.DeleteValue("ServerId", false);
+                    key.DeleteValue("PlayerToken", false);
+                    key.DeleteValue("ServerIp", false);
+                    key.DeleteValue("ServerPort", false);
+                }
+            }
+            catch { }
+
+            StatusMessage = "Connection state reset. Reconnect Steam, then Pair Server.";
+            _logger?.LogInfo("✓ Connection state reset complete.");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Reset failed: {ex.Message}";
+            _logger?.LogError($"Reset failed: {ex.Message}", ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     [RelayCommand(AllowConcurrentExecutions = false)]
@@ -1502,6 +1569,13 @@ public partial class MainViewModel : ObservableObject
                 FilteredResultsText = $"{machineCount} vending machines";
             }
         }
+    }
+
+    private static bool IsSteamRelayIp(string? ip)
+    {
+        if (string.IsNullOrWhiteSpace(ip)) return false;
+        var parts = ip.Split('.');
+        return parts.Length == 4 && parts[0] == "162" && parts[1] == "254";
     }
 }
 

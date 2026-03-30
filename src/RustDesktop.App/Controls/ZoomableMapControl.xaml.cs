@@ -51,6 +51,13 @@ public partial class ZoomableMapControl : UserControl
             typeof(ZoomableMapControl),
             new PropertyMetadata(null, OnTeamMembersChanged));
 
+    public static readonly DependencyProperty WorldSizeProperty =
+        DependencyProperty.Register(
+            nameof(WorldSize),
+            typeof(int),
+            typeof(ZoomableMapControl),
+            new PropertyMetadata(0, OnWorldSizeChanged));
+
     public byte[]? ImageData
     {
         get => (byte[]?)GetValue(ImageDataProperty);
@@ -67,6 +74,12 @@ public partial class ZoomableMapControl : UserControl
     {
         get => (List<TeamMember>?)GetValue(TeamMembersProperty);
         set => SetValue(TeamMembersProperty, value);
+    }
+
+    public int WorldSize
+    {
+        get => (int)GetValue(WorldSizeProperty);
+        set => SetValue(WorldSizeProperty, value);
     }
 
     public ZoomableMapControl()
@@ -120,6 +133,15 @@ public partial class ZoomableMapControl : UserControl
     {
         if (d is ZoomableMapControl control)
         {
+            control.UpdateMarkers();
+        }
+    }
+
+    private static void OnWorldSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is ZoomableMapControl control && e.NewValue is int worldSize)
+        {
+            control._worldSize = worldSize > 0 ? worldSize : 0;
             control.UpdateMarkers();
         }
     }
@@ -362,12 +384,6 @@ public partial class ZoomableMapControl : UserControl
             var canvasX = mapX * baseScale;
             var canvasY = mapY * baseScale;
             
-            // Apply offset to move markers down and left
-            const double offsetX = -15.0; // Move left (negative = left)
-            const double offsetY = 20.0;  // Move down (positive = down)
-            canvasX += offsetX;
-            canvasY += offsetY;
-            
             // Scale marker size inversely with zoom level
             // When zoomed in (zoom > 1), markers get smaller
             // When zoomed out (zoom < 1), markers get larger
@@ -525,48 +541,18 @@ public partial class ZoomableMapControl : UserControl
 
     private (double x, double y) WorldToMapCoordinates(float worldX, float worldY)
     {
-        // Rust maps: world coordinates are typically 0 to worldSize
-        // Map images include ocean padding (typically 2000 units)
-        // The playable area is centered in the map image
-        // Y coordinate needs to be inverted (Rust Y increases upward, image Y increases downward)
-        
-        if (_worldSize <= 0) _worldSize = 4500; // Default fallback
-        
-        const double padWorld = 2000.0;
-        var totalWorld = _worldSize + padWorld;
-        var halfPad = padWorld * 0.5;
-        
-        // Clamp coordinates to valid range (including padding)
-        var clampedX = Math.Clamp(worldX, -halfPad, _worldSize + halfPad);
-        var clampedY = Math.Clamp(worldY, -halfPad, _worldSize + halfPad);
-        
-        // Calculate the centered playable area dimensions (inner world square)
-        // The inner world square takes up worldSize / totalWorld of the image
-        var minSidePx = Math.Min(_mapWidth, _mapHeight);
-        var innerWorldRatio = _worldSize / totalWorld;
-        var innerSidePx = minSidePx * innerWorldRatio;
-        
-        // Calculate the FULL side including padding (this is what we need for proper mapping)
-        var fullSidePx = innerSidePx * (totalWorld / _worldSize);
-        
-        // Apply a compression factor to bring edge shops closer together
-        // This reduces the effective mapping area slightly
-        const double compressionFactor = 0.92; // 92% of full size to compress edges
-        var effectiveSidePx = fullSidePx * compressionFactor;
-        
-        // Calculate offset to center the effective square in the image
-        var fullOffsetX = (_mapWidth - effectiveSidePx) / 2.0;
-        var fullOffsetY = (_mapHeight - effectiveSidePx) / 2.0;
-        
-        // Normalize world coordinates to 0-1 range (including padding)
-        var normalizedX = (clampedX + halfPad) / totalWorld;
-        // Invert Y coordinate: Rust Y increases upward, image Y increases downward
-        var normalizedY = ((_worldSize - clampedY) + halfPad) / totalWorld;
-        
-        // Convert to map pixel coordinates using the effective side (compressed)
-        var mapX = fullOffsetX + (normalizedX * effectiveSidePx);
-        var mapY = fullOffsetY + (normalizedY * effectiveSidePx);
-        
+        var worldSize = _worldSize > 0 ? _worldSize : 4500;
+
+        // Rust world coordinates are 0..worldSize and map image coordinates are 0..mapWidth/Height.
+        var clampedX = Math.Clamp(worldX, 0, worldSize);
+        var clampedY = Math.Clamp(worldY, 0, worldSize);
+
+        var normalizedX = clampedX / worldSize;
+        var normalizedY = 1.0 - (clampedY / worldSize); // Y axis is inverted on images
+
+        var mapX = normalizedX * _mapWidth;
+        var mapY = normalizedY * _mapHeight;
+
         return (mapX, mapY);
     }
 }
